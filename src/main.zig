@@ -26,7 +26,7 @@ pub fn main() !void {
 
         const line = try std.fmt.allocPrint(
             alloc,
-            "  {s}{s}{s}{s}{s}{s}      \n",
+            "  {s} {s} {s} {s} {s} {s}      \n",
             .{ cpu_str, DELIM, mem_str, DELIM, clock_str, DELIM },
         );
         defer alloc.free(line);
