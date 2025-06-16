@@ -1,46 +1,52 @@
-//! By convention, main.zig is where your main function lives in the case that
-//! you are building an executable. If you are making a library, the convention
-//! is to delete this file and start with root.zig instead.
+const std = @import("std");
+const c = @cImport({
+    @cInclude("sys/sysinfo.h"); // struct sysinfo + syscall
+    @cInclude("stdlib.h"); // getloadavg()
+});
 
-pub fn main() !void {
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
-
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
+fn colour(
+    text: []const u8,
+    comptime fg: ?[]const u8,
+    comptime bg: ?[]const u8,
+) !void {
     const stdout_file = std.io.getStdOut().writer();
     var bw = std.io.bufferedWriter(stdout_file);
     const stdout = bw.writer();
 
-    try stdout.print("Run `zig build test` to run the tests.\n", .{});
+    // ── single defer that runs on every exit path ────────────────
+    defer {
+        if (fg) |_|
+            stdout.print("^fg()", .{}) catch
+                std.debug.print("failed to print closing fg!\n", .{});
+        if (bg) |_|
+            stdout.print("^bg()", .{}) catch
+                std.debug.print("failed to print closing bg!\n", .{});
 
-    try bw.flush(); // Don't forget to flush!
+        bw.flush() catch {}; // guarantee bytes reach the TTY
+    }
+
+    // foreground
+    if (fg) |fg_code| {
+        errdefer std.debug.print("failed to print opening fg!\n", .{});
+        try stdout.print("^fg({s})", .{fg_code});
+    }
+
+    // background
+    if (bg) |bg_code| {
+        errdefer std.debug.print("failed to print opening bg!\n", .{});
+        try stdout.print("^bg({s})", .{bg_code});
+    }
+
+    try stdout.print("{s}", .{text});
 }
 
-test "simple test" {
-    var list = std.ArrayList(i32).init(std.testing.allocator);
-    defer list.deinit(); // Try commenting this out and see if zig detects the memory leak!
-    try list.append(42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
+pub fn main() !void {
+    while (true) {
+        var info: c.struct_sysinfo = undefined;
+        if (c.sysinfo(&info) != 0) return error.SysInfoFailed;
+        const mem_total = info.totalram * info.mem_unit;
+        const mem_free = info.freeram * info.mem_unit;
+        const mem_used = mem_total - mem_free;
+        try colour(mem_used, null, "#ffffff");
+    }
 }
-
-test "use other module" {
-    try std.testing.expectEqual(@as(i32, 150), lib.add(100, 50));
-}
-
-test "fuzz example" {
-    const Context = struct {
-        fn testOne(context: @This(), input: []const u8) anyerror!void {
-            _ = context;
-            // Try passing `--fuzz` to `zig build test` and see if it manages to fail this test case!
-            try std.testing.expect(!std.mem.eql(u8, "canyoufindme", input));
-        }
-    };
-    try std.testing.fuzz(Context{}, Context.testOne, .{});
-}
-
-const std = @import("std");
-
-/// This imports the separate module containing `root.zig`. Take a look in `build.zig` for details.
-const lib = @import("status_lib");

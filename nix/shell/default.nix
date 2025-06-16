@@ -5,7 +5,7 @@
 }:
 pkgs.mkShell {
   name = "status";
-  
+
   packages = with pkgs; [
     nixd
     alejandra
@@ -13,5 +13,6 @@ pkgs.mkShell {
     deadnix
     zig
     zls
+    zlint
   ];
 }
