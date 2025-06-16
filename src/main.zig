@@ -15,24 +15,25 @@ pub fn main() !void {
     const out = bw.writer();
 
     while (true) {
-        // build each widget; errors => show "ERR"
+        const cpu_str = try cpu(alloc);
+        const mem_str = try mem(alloc);
+        const clock_str = try clock(alloc);
+        defer {
+            alloc.free(cpu_str);
+            alloc.free(mem_str);
+            alloc.free(clock_str);
+        }
+
         const line = try std.fmt.allocPrint(
             alloc,
             "{s}{s}{s}{s}{s}{s}\n",
-            .{
-                try cpu(alloc),
-                DELIM,
-                try mem(alloc),
-                DELIM,
-                try clock(alloc),
-                DELIM,
-            },
+            .{ cpu_str, DELIM, mem_str, DELIM, clock_str, DELIM },
         );
         defer alloc.free(line);
 
         try out.print("{s}", .{line});
         try bw.flush();
-        std.time.sleep(1_000_000_000); // 1 s
+        std.time.sleep(1_000_000_000);
     }
 }
 
@@ -89,17 +90,33 @@ fn mem(alloc: std.mem.Allocator) ![]u8 {
     var buf: [2048]u8 = undefined;
     const len = try file.readAll(&buf);
 
+    var total_kib: u64 = 0;
+    var avail_kib: u64 = 0;
+
     var it = std.mem.splitScalar(u8, buf[0..len], '\n');
     while (it.next()) |ln| {
-        if (std.mem.startsWith(u8, ln, "MemAvailable:")) {
+        if (std.mem.startsWith(u8, ln, "MemTotal:") or std.mem.startsWith(u8, ln, "MemAvailable:")) {
+            // split the *whole* line on spaces, first numeric token is the value
             var tok = std.mem.tokenizeScalar(u8, ln, ' ');
-            _ = tok.next(); // skip label
-            const kib = try std.fmt.parseInt(u64, tok.next().?, 10);
-            const pretty = try std.fmt.allocPrint(alloc, "{d} MiB", .{kib / 1024});
-            return colour(alloc, pretty, "789978", null);
+            _ = tok.next(); // first token is the label
+            while (tok.next()) |t| { // skip empty runs
+                if (t.len != 0) {
+                    const val = try std.fmt.parseInt(u64, t, 10);
+                    if (std.mem.startsWith(u8, ln, "MemTotal:"))
+                        total_kib = val
+                    else
+                        avail_kib = val;
+                    break;
+                }
+            }
         }
     }
-    return colour(alloc, "MEM_ERR", "FF0000", null);
+
+    const used_kib = total_kib - avail_kib;
+    const used_gib = @as(f64, @floatFromInt(used_kib)) / 1024.0 / 1024.0; // GiB
+
+    const pretty = try std.fmt.allocPrint(alloc, "{d:.1} GiB", .{used_gib});
+    return colour(alloc, pretty, "789978", null);
 }
 
 fn clock(alloc: std.mem.Allocator) ![]u8 {
