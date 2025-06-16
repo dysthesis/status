@@ -15,4 +15,5 @@ stdenv.mkDerivation {
   zigBuildFlags = [
     "-Dtarget=x86_64-linux-musl"
   ];
+  meta.mainPackage = "status";
 }
