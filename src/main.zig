@@ -29,7 +29,8 @@ pub fn main() !void {
         }
 
         const status = try std.mem.concat(alloc, u8, parts[0..]);
-        try out.print("{s}", status);
+
+        try out.print("{s}", .{status});
         try bw.flush();
         std.time.sleep(1_000_000_000);
     }
