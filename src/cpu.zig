@@ -17,6 +17,6 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
 
 pub const Cpu = module.Module{
     .name = "CPU",
-    .icons = "^g(789978)   ^fg()",
+    .icons = "^fg(789978)   ^fg()",
     .fetch = fetch,
 };
