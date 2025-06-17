@@ -15,19 +15,21 @@ pub fn main() !void {
     const out = bw.writer();
 
     while (true) {
-        const cpu_str = try cpu(alloc);
-        const mem_str = try mem(alloc);
-        const clock_str = try clock(alloc);
+        const cpu_str = cpu(alloc) catch try std.fmt.allocPrint(alloc, "n/a", .{});
+        const cpu_icon = get_icon(icons.Cpu);
+        const mem_str = mem(alloc) catch try std.fmt.allocPrint(alloc, "n/a", .{});
+        const mem_icon = get_icon(icons.Mem);
+        const clock_str = clock() catch try std.fmt.allocPrint(alloc, "n/a", .{});
+        const clock_icon = get_icon(icons.Clock);
         defer {
             alloc.free(cpu_str);
             alloc.free(mem_str);
-            alloc.free(clock_str);
         }
 
         const line = try std.fmt.allocPrint(
             alloc,
-            "  {s} {s} {s} {s} {s} {s}      \n",
-            .{ cpu_str, DELIM, mem_str, DELIM, clock_str, DELIM },
+            "  {s} {s} {s} {s} {s} {s} {s} {s} {s}      \n",
+            .{ cpu_icon, cpu_str, DELIM, mem_icon, mem_str, DELIM, clock_icon, clock_str, DELIM },
         );
         defer alloc.free(line);
 
@@ -37,13 +39,26 @@ pub fn main() !void {
     }
 }
 
+const icons = enum {
+    Mem,
+    Cpu,
+    Clock,
+};
+
+pub fn get_icon(comptime icon: icons) []const u8 {
+    return switch (icon) {
+        .Mem => colour("   ", "708090", null),
+        .Cpu => colour("   ", "789978", null),
+        .Clock => colour("  󱑆 ", "7788AA", null),
+    };
+}
+
 /// Print out the given text with the given foreground and background
 pub fn colour(
-    allocator: std.mem.Allocator,
-    text: []const u8,
+    comptime text: []const u8,
     comptime fg: ?[]const u8,
     comptime bg: ?[]const u8,
-) ![]u8 {
+) []const u8 {
     const use_fg = comptime fg != null;
     const use_bg = comptime bg != null;
 
@@ -65,30 +80,32 @@ pub fn colour(
     else
         .{text};
 
-    return std.fmt.allocPrint(allocator, fmt, args);
+    return std.fmt.comptimePrint(fmt, args);
 }
 
-fn cpu(alloc: std.mem.Allocator) ![]u8 {
-    var file = try std.fs.openFileAbsolute("/proc/loadavg", .{});
+fn cpu(allocator: std.mem.Allocator) ![]u8 {
+    // Try to open; on failure, return a default placeholder
+    const file = std.fs.openFileAbsolute("/proc/loadavg", .{}) catch {
+        // ignore the error and return a placeholder
+        return try std.fmt.allocPrint(allocator, "n/a", .{});
+    };
     defer file.close();
 
     var buf: [64]u8 = undefined;
-    const n = try file.readAll(&buf); // OK now
+    const n = try file.readAll(&buf);
     const slice = buf[0..n];
-
-    // first number before the first space = 1-min load
     const first_space = std.mem.indexOf(u8, slice, " ").?;
     const one_min = slice[0..first_space];
 
-    return colour(alloc, one_min, "708090", null);
+    return try std.fmt.allocPrint(allocator, "{s}", .{one_min});
 }
 
-fn mem(alloc: std.mem.Allocator) ![]u8 {
-    var file = try std.fs.openFileAbsolute("/proc/meminfo", .{});
+fn mem(allocator: std.mem.Allocator) ![]u8 {
+    const file = std.fs.openFileAbsolute("/proc/meminfo", .{ .mode = .read_only }) catch return try std.fmt.allocPrint(allocator, "n/a", .{});
     defer file.close();
 
     var buf: [2048]u8 = undefined;
-    const len = try file.readAll(&buf);
+    const len = file.readAll(&buf) catch return try std.fmt.allocPrint(allocator, "n/a", .{});
 
     var total_kib: u64 = 0;
     var avail_kib: u64 = 0;
@@ -115,11 +132,11 @@ fn mem(alloc: std.mem.Allocator) ![]u8 {
     const used_kib = total_kib - avail_kib;
     const used_gib = @as(f64, @floatFromInt(used_kib)) / 1024.0 / 1024.0; // GiB
 
-    const pretty = try std.fmt.allocPrint(alloc, "{d:.1} GiB", .{used_gib});
-    return colour(alloc, pretty, "789978", null);
+    const res = std.fmt.allocPrint(allocator, "{d:.1} GiB", .{used_gib}) catch return try std.fmt.allocPrint(allocator, "n/a", .{});
+    return res;
 }
 
-fn clock(alloc: std.mem.Allocator) ![]u8 {
+fn clock() ![]u8 {
     var now_raw: c.time_t = c.time(null);
     var tm: c.struct_tm = undefined;
     _ = c.localtime_r(&now_raw, &tm);
@@ -127,7 +144,5 @@ fn clock(alloc: std.mem.Allocator) ![]u8 {
     var buf: [20]u8 = undefined; // exactly 16 bytes + NUL
     const written = c.strftime(&buf, buf.len, "%Y-%m-%d %H:%M", &tm);
     if (written == 0) return error.ClockFormatFailed;
-    const slice = buf[0..written];
-
-    return colour(alloc, slice, "7788AA", null);
+    return buf[0..written];
 }
