@@ -5,12 +5,10 @@ const c = @cImport(@cInclude("time.h")); // strftime, time, localtime_r
 const DELIM = "^fg(2A2A2A) |^fg()";
 
 pub fn main() !void {
-    // single allocator for all tmp strings
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const alloc = gpa.allocator();
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
 
-    // buffered stdout like in your shell loop
     var bw = std.io.bufferedWriter(std.io.getStdOut().writer());
     const out = bw.writer();
 
