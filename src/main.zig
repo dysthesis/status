@@ -145,5 +145,5 @@ fn clock(allocator: std.mem.Allocator) ![]u8 {
     var buf: [20]u8 = undefined; // exactly 16 bytes + NUL
     const written = c.strftime(&buf, buf.len, "%Y-%m-%d %H:%M", &tm);
     if (written == 0) return error.ClockFormatFailed;
-    return std.fmt.allocPrint(allocator, "{s}", buf[0..written]);
+    return std.fmt.allocPrint(allocator, "{s}", .{buf[0..written]});
 }
