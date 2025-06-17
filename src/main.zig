@@ -19,11 +19,12 @@ pub fn main() !void {
         const cpu_icon = get_icon(icons.Cpu);
         const mem_str = mem(alloc) catch try std.fmt.allocPrint(alloc, "n/a", .{});
         const mem_icon = get_icon(icons.Mem);
-        const clock_str = clock() catch try std.fmt.allocPrint(alloc, "n/a", .{});
+        const clock_str = clock(alloc) catch try std.fmt.allocPrint(alloc, "n/a", .{});
         const clock_icon = get_icon(icons.Clock);
         defer {
             alloc.free(cpu_str);
             alloc.free(mem_str);
+            alloc.free(clock_str);
         }
 
         const line = try std.fmt.allocPrint(
@@ -136,7 +137,7 @@ fn mem(allocator: std.mem.Allocator) ![]u8 {
     return res;
 }
 
-fn clock() ![]u8 {
+fn clock(allocator: std.mem.Allocator) ![]u8 {
     var now_raw: c.time_t = c.time(null);
     var tm: c.struct_tm = undefined;
     _ = c.localtime_r(&now_raw, &tm);
@@ -144,5 +145,5 @@ fn clock() ![]u8 {
     var buf: [20]u8 = undefined; // exactly 16 bytes + NUL
     const written = c.strftime(&buf, buf.len, "%Y-%m-%d %H:%M", &tm);
     if (written == 0) return error.ClockFormatFailed;
-    return buf[0..written];
+    return std.fmt.allocPrint(allocator, "{s}", buf[0..written]);
 }
