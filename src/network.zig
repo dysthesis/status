@@ -92,6 +92,6 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
 
 pub const Net = module.Module{
     .name = "Network",
-    .icons = "",
+    .icons = "  ",
     .fetch = fetch,
 };
