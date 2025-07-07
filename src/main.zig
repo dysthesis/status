@@ -6,7 +6,7 @@ const cpu = @import("cpu.zig");
 const clock = @import("clock.zig");
 const module = @import("module.zig");
 
-const tray_size = 4;
+const tray_size = 10;
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
