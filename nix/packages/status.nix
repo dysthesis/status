@@ -13,7 +13,7 @@ stdenv.mkDerivation {
   nativeBuildInputs = [zig.hook pkg-config];
 
   zigBuildFlags = [
-    "-Dtarget=x86_64-linux-musl"
+    "-Dtarget=x86_64-linux-musl" # statically link
   ];
   meta.mainPackage = "status";
 }

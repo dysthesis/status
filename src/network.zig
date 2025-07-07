@@ -6,7 +6,7 @@ const State = struct { rx: u64, tx: u64, t_ns: i128 };
 var prev: ?State = null;
 
 fn formatBitsPerSec(bps: u64, allocator: std.mem.Allocator) ![]const u8 {
-    const units = [_][]const u8{ "b/s", "kb/s", "Mb/s", "Gb/s", "Tb/s" };
+    const units = [_][]const u8{ "B/s", "kB/s", "MB/s", "GB/s", "TB/s" };
 
     var value = @as(f64, @floatFromInt(bps));
     var idx: usize = 0;
