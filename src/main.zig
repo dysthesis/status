@@ -4,6 +4,7 @@ const DELIM = "^fg(2A2A2A) |^fg()";
 const mem = @import("mem.zig");
 const cpu = @import("cpu.zig");
 const clock = @import("clock.zig");
+const net = @import("network.zig");
 const module = @import("module.zig");
 
 const tray_size = 10;
@@ -17,6 +18,7 @@ pub fn main() !void {
     const out = bw.writer();
 
     const modules = [_]module.Module{
+        net.Net,
         mem.Mem,
         cpu.Cpu,
         clock.Clock,
