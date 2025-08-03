@@ -5,13 +5,13 @@ const module = @import("module.zig");
 const State = struct { rx: u64, tx: u64, t_ns: i128 };
 var prev: ?State = null;
 
-fn formatBitsPerSec(bps: u64, allocator: std.mem.Allocator) ![]const u8 {
-    const units = [_][]const u8{ "B/s", "kB/s", "MB/s", "GB/s", "TB/s" };
+fn formatBytesPerSec(bps: u64, allocator: std.mem.Allocator) ![]const u8 {
+    const units = [_][]const u8{ "B/s", "KiB/s", "MiB/s", "GiB/s", "TiB/s" };
 
     var value = @as(f64, @floatFromInt(bps));
     var idx: usize = 0;
-    while (value >= 1000.0 and idx + 1 < units.len) : (idx += 1) {
-        value /= 1000.0;
+    while (value >= 1024.0 and idx + 1 < units.len) : (idx += 1) {
+        value /= 1024.0;
     }
 
     var list = std.ArrayList(u8).init(allocator);
@@ -19,10 +19,8 @@ fn formatBitsPerSec(bps: u64, allocator: std.mem.Allocator) ![]const u8 {
 
     const w = list.writer();
     if (value < 100.0) {
-        // one decimal place
         try w.print("{d:.1} {s}", .{ value, units[idx] });
     } else {
-        // integer
         try w.print("{d:.0} {s}", .{ value, units[idx] });
     }
     return list.toOwnedSlice(); // caller frees
@@ -74,20 +72,27 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
 
     if (prev == null) {
         prev = now;
-        return "0 b/s 0 b/s";
+        return "0 B/s 0 B/s";
     }
 
     const delta_rx = now.rx - prev.?.rx;
     const delta_tx = now.tx - prev.?.tx;
-    const delta_t = @as(f64, @floatFromInt(now.t_ns - prev.?.t_ns)) / 1e9;
+    const delta_t_ns = now.t_ns - prev.?.t_ns;
+    if (delta_t_ns <= 0) return "n/a"; // avoid divide-by-zero or time warp
+    const delta_t = @as(f64, @floatFromInt(delta_t_ns)) / 1e9;
 
-    const down_bps = @as(u64, @intFromFloat((@as(f64, @floatFromInt(delta_rx)) * 8.0) / delta_t));
-    const up_bps = @as(u64, @intFromFloat((@as(f64, @floatFromInt(delta_tx)) * 8.0) / delta_t));
+    // **bytes per second**, no ×8!
+    const down_Bps = @as(u64, @intFromFloat(@as(f64, @floatFromInt(delta_rx)) / delta_t));
+    const up_Bps = @as(u64, @intFromFloat(@as(f64, @floatFromInt(delta_tx)) / delta_t));
     prev = now;
 
-    const down_txt = formatBitsPerSec(down_bps, allocator) catch "n/a";
-    const up_txt = formatBitsPerSec(up_bps, allocator) catch "n/a";
-    return std.fmt.allocPrint(allocator, "{s}{s}^fg(FFAA88) ↓ ^fg(){s}^fg(FFAA88) ↑^fg()", .{ self.icons, down_txt, up_txt }) catch "n/a";
+    const down_txt = formatBytesPerSec(down_Bps, allocator) catch "n/a";
+    const up_txt = formatBytesPerSec(up_Bps, allocator) catch "n/a";
+    return std.fmt.allocPrint(
+        allocator,
+        "{s}{s}^fg(FFAA88) ↓ ^fg(){s}^fg(FFAA88) ↑^fg()",
+        .{ self.icons, down_txt, up_txt },
+    ) catch "n/a";
 }
 
 pub const Net = module.Module{
