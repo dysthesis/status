@@ -19,7 +19,7 @@ pub fn main() !void {
     const out = bw.writer();
 
     const modules = [_]module.Module{
-        task.Taskwarrior,
+        // task.Taskwarrior,
         net.Net,
         mem.Mem,
         cpu.Cpu,
@@ -39,7 +39,7 @@ pub fn main() !void {
         const status = try std.mem.concat(alloc, u8, parts[0..]);
         const tray_padding = " " ** tray_size;
 
-        try out.print("{s}{s}", .{ status, tray_padding });
+        try out.print("{s}{s}\n", .{ status, tray_padding });
         try bw.flush();
         std.time.sleep(1_000_000_000);
     }
