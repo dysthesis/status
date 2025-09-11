@@ -8,7 +8,7 @@ const net = @import("network.zig");
 const task = @import("task.zig");
 const module = @import("module.zig");
 
-const tray_size = 10;
+const tray_size = 0;
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
