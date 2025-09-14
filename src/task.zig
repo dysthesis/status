@@ -102,7 +102,7 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
 
     // Truncate output so this module never emits more than 50 bytes.
     const task = task_opt.?;
-    const LIMIT: usize = 50;
+    const LIMIT: usize = 100;
 
     var list = std.ArrayList(u8).init(allocator);
     defer list.deinit();
