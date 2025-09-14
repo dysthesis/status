@@ -1,5 +1,6 @@
 const std = @import("std");
 const module = @import("module.zig");
+const c = @cImport(@cInclude("time.h")); // time, timegm, struct tm
 
 /// Helper that runs `task export` (or anything passed in `argv`) and returns its stdout as a fresh
 /// heap slice.
@@ -24,7 +25,7 @@ fn run_command(allocator: std.mem.Allocator) ![]u8 {
 
 /// Parse a Taskwarrior JSON array (produced by `task ... export`) and pull out description and due
 /// date of the first task. Returns freshly allocated slices owned by `a`.
-fn first_task(json: []const u8, a: std.mem.Allocator) ?struct { desc: []const u8, due: ?[]const u8 } {
+fn first_task(json: []const u8, a: std.mem.Allocator) ?struct { desc: []const u8, due_raw: ?[]const u8 } {
     const trimmed = std.mem.trim(u8, json, " \t\r\n");
     if (trimmed.len == 0 or std.mem.eql(u8, trimmed, "[]"))
         return null; // nothing ready
@@ -66,27 +67,88 @@ fn first_task(json: []const u8, a: std.mem.Allocator) ?struct { desc: []const u8
     if (desc_v != .string) return null;
     const desc_src = desc_v.string;
 
-    // optional due date
+    // optional due date (keep raw Taskwarrior timestamp, e.g. YYYYMMDD or YYYYMMDDTHHMMSSZ)
     const due_opt_v = obj.get("due");
     var due_opt: ?[]const u8 = null;
-    if (due_opt_v) |dv|
-        if (dv == .string and dv.string.len >= 8) { // YYYYMMDD...
-            var tmp: [10]u8 = undefined; // YYYY-MM-DD
-            std.mem.copyForwards(u8, tmp[0..4], dv.string[0..4]);
-            tmp[4] = '-';
-            std.mem.copyForwards(u8, tmp[5..7], dv.string[4..6]);
-            tmp[7] = '-';
-            std.mem.copyForwards(u8, tmp[8..10], dv.string[6..8]);
-            const due_buf = a.alloc(u8, 10) catch return null;
-            std.mem.copyForwards(u8, due_buf, tmp[0..]);
-            due_opt = due_buf;
-        };
+    if (due_opt_v) |dv| if (dv == .string and dv.string.len >= 8) {
+        const due_buf = a.alloc(u8, dv.string.len) catch return null;
+        std.mem.copyForwards(u8, due_buf, dv.string);
+        due_opt = due_buf;
+    };
 
     // Copy description to caller-owned memory
     const desc_buf = a.alloc(u8, desc_src.len) catch return null;
     std.mem.copyForwards(u8, desc_buf, desc_src);
 
-    return .{ .desc = desc_buf, .due = due_opt };
+    return .{ .desc = desc_buf, .due_raw = due_opt };
+}
+
+fn parseUint(comptime T: type, s: []const u8) ?T {
+    return std.fmt.parseInt(T, s, 10) catch null;
+}
+
+// Parse Taskwarrior due string (YYYYMMDD or YYYYMMDDTHHMMSS[Z]) to epoch seconds (UTC)
+fn parseDueEpoch(d: []const u8) ?i64 {
+    if (d.len < 8) return null;
+    const year = parseUint(i32, d[0..4]) orelse return null;
+    const mon = parseUint(i32, d[4..6]) orelse return null;
+    const day = parseUint(i32, d[6..8]) orelse return null;
+
+    var hour: i32 = 0;
+    var min: i32 = 0;
+    var sec: i32 = 0;
+    if (d.len >= 15 and d[8] == 'T') {
+        hour = parseUint(i32, d[9..11]) orelse 0;
+        min = parseUint(i32, d[11..13]) orelse 0;
+        sec = parseUint(i32, d[13..15]) orelse 0;
+    }
+
+    var tm: c.struct_tm = std.mem.zeroes(c.struct_tm);
+    tm.tm_year = year - 1900;
+    tm.tm_mon = mon - 1;
+    tm.tm_mday = day;
+    tm.tm_hour = hour;
+    tm.tm_min = min;
+    tm.tm_sec = sec;
+    tm.tm_isdst = 0;
+
+    // Interpret as UTC if possible
+    const t: c.time_t = c.timegm(&tm);
+    return @as(i64, @intCast(t));
+}
+
+fn formatRelative(buf: []u8, now_epoch: i64, due_epoch: i64) []const u8 {
+    var diff: i64 = due_epoch - now_epoch;
+    const future = diff >= 0;
+    if (!future) diff = -diff;
+
+    const sec_per_min: i64 = 60;
+    const sec_per_hour: i64 = 60 * 60;
+    const sec_per_day: i64 = 24 * 60 * 60;
+
+    var n: i64 = 0;
+    var unit: u8 = 's';
+    if (diff >= sec_per_day) {
+        n = @divTrunc(diff, sec_per_day);
+        unit = 'd';
+    } else if (diff >= sec_per_hour) {
+        n = @divTrunc(diff, sec_per_hour);
+        unit = 'h';
+    } else if (diff >= sec_per_min) {
+        n = @divTrunc(diff, sec_per_min);
+        unit = 'm';
+    } else {
+        n = diff;
+        unit = 's';
+    }
+
+    if (future) {
+        const written = std.fmt.bufPrint(buf, "in {d}{c}", .{ n, unit }) catch return "in ?";
+        return buf[0..written.len];
+    } else {
+        const written = std.fmt.bufPrint(buf, "{d}{c} ago", .{ n, unit }) catch return "? ago";
+        return buf[0..written.len];
+    }
 }
 
 /// The `fetch` function exposed to the status-bar core.
@@ -126,9 +188,24 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
     // description (truncated as needed)
     append_limited(&list, task.desc, LIMIT) catch return "n/a";
 
-    if (task.due) |d| {
-        append_limited(&list, " due ", LIMIT) catch return "n/a";
-        append_limited(&list, d, LIMIT) catch return "n/a";
+    if (task.due_raw) |d| {
+        // Try to parse relative time; fall back to YYYY-MM-DD if parsing fails
+        const now_epoch: i64 = @as(i64, @intCast(c.time(null)));
+        if (parseDueEpoch(d)) |due_epoch| {
+            var buf: [24]u8 = undefined;
+            const rel = formatRelative(buf[0..], now_epoch, due_epoch);
+            append_limited(&list, " due ", LIMIT) catch return "n/a";
+            append_limited(&list, rel, LIMIT) catch return "n/a";
+        } else if (d.len >= 8) {
+            var tmp: [10]u8 = undefined; // YYYY-MM-DD
+            std.mem.copyForwards(u8, tmp[0..4], d[0..4]);
+            tmp[4] = '-';
+            std.mem.copyForwards(u8, tmp[5..7], d[4..6]);
+            tmp[7] = '-';
+            std.mem.copyForwards(u8, tmp[8..10], d[6..8]);
+            append_limited(&list, " due ", LIMIT) catch return "n/a";
+            append_limited(&list, tmp[0..], LIMIT) catch return "n/a";
+        }
     }
 
     return list.toOwnedSlice() catch "n/a";
