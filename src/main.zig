@@ -19,7 +19,7 @@ pub fn main() !void {
     const out = bw.writer();
 
     const modules = [_]module.Module{
-        // task.Taskwarrior,
+        task.Taskwarrior,
         net.Net,
         mem.Mem,
         cpu.Cpu,

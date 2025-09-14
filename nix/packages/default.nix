@@ -4,7 +4,15 @@
   lib,
   inputs,
   ...
-}: rec {
+}:
+rec {
   default = status;
-  status = pkgs.callPackage ./status.nix {inherit pkgs inputs lib self;};
+  status = pkgs.callPackage ./status.nix {
+    inherit
+      pkgs
+      inputs
+      lib
+      self
+      ;
+  };
 }

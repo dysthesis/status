@@ -1,8 +1,4 @@
-{
-  pkgs,
-  self,
-  ...
-}:
+{ pkgs, ... }:
 pkgs.mkShell {
   name = "status";
   buildInputs = with pkgs; [

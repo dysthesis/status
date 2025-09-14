@@ -23,7 +23,7 @@ fn run_command(allocator: std.mem.Allocator) ![]u8 {
 }
 
 /// Parse a Taskwarrior JSON array (produced by `task ... export`) and pull out description and due
-/// date of the first task.
+/// date of the first task. Returns freshly allocated slices owned by `a`.
 fn first_task(json: []const u8, a: std.mem.Allocator) ?struct { desc: []const u8, due: ?[]const u8 } {
     const trimmed = std.mem.trim(u8, json, " \t\r\n");
     if (trimmed.len == 0 or std.mem.eql(u8, trimmed, "[]"))
@@ -64,29 +64,35 @@ fn first_task(json: []const u8, a: std.mem.Allocator) ?struct { desc: []const u8
     const obj = best.object;
     const desc_v = obj.get("description") orelse return null;
     if (desc_v != .string) return null;
-    const desc = desc_v.string;
+    const desc_src = desc_v.string;
 
     // optional due date
     const due_opt_v = obj.get("due");
     var due_opt: ?[]const u8 = null;
     if (due_opt_v) |dv|
         if (dv == .string and dv.string.len >= 8) { // YYYYMMDD...
-            var buf: [10]u8 = undefined; // YYYY-MM-DD
-            std.mem.copyForwards(u8, buf[0..4], dv.string[0..4]);
-            buf[4] = '-';
-            std.mem.copyForwards(u8, buf[5..7], dv.string[4..6]);
-            buf[7] = '-';
-            std.mem.copyForwards(u8, buf[8..10], dv.string[6..8]);
-            due_opt = buf[0..];
+            var tmp: [10]u8 = undefined; // YYYY-MM-DD
+            std.mem.copyForwards(u8, tmp[0..4], dv.string[0..4]);
+            tmp[4] = '-';
+            std.mem.copyForwards(u8, tmp[5..7], dv.string[4..6]);
+            tmp[7] = '-';
+            std.mem.copyForwards(u8, tmp[8..10], dv.string[6..8]);
+            const due_buf = a.alloc(u8, 10) catch return null;
+            std.mem.copyForwards(u8, due_buf, tmp[0..]);
+            due_opt = due_buf;
         };
 
-    return .{ .desc = desc, .due = due_opt };
+    // Copy description to caller-owned memory
+    const desc_buf = a.alloc(u8, desc_src.len) catch return null;
+    std.mem.copyForwards(u8, desc_buf, desc_src);
+
+    return .{ .desc = desc_buf, .due = due_opt };
 }
 
 /// The `fetch` function exposed to the status-bar core.
 fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
     const raw = run_command(allocator) catch {
-        return "err"[0..]; // spawn/read failure
+        return "n/a"[0..]; // spawn/read failure
     };
     defer allocator.free(raw);
 
@@ -94,11 +100,38 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
     if (task_opt == null)
         return std.fmt.allocPrint(allocator, "{s} No tasks", .{self.icons}) catch "n/a"[0..];
 
+    // Truncate output so this module never emits more than 50 bytes.
     const task = task_opt.?;
-    return if (task.due) |d|
-        std.fmt.allocPrint(allocator, "{s} {s} due {s}", .{ self.icons, task.desc, d }) catch "n/a"[0..]
-    else
-        std.fmt.allocPrint(allocator, "{s} {s}", .{ self.icons, task.desc }) catch "n/a"[0..];
+    const LIMIT: usize = 50;
+
+    var list = std.ArrayList(u8).init(allocator);
+    defer list.deinit();
+
+    // Reserve up to LIMIT to reduce reallocs; ignore error, we can still append.
+    _ = list.ensureTotalCapacityPrecise(LIMIT) catch {};
+
+    const append_limited = struct {
+        fn run(l: *std.ArrayList(u8), seg: []const u8, limit: usize) !void {
+            if (l.items.len >= limit) return; // already full
+            const rem = limit - l.items.len;
+            const take = if (seg.len > rem) rem else seg.len;
+            try l.appendSlice(seg[0..take]);
+        }
+    }.run;
+
+    // icons
+    append_limited(&list, self.icons, LIMIT) catch return "n/a";
+    // space
+    append_limited(&list, " ", LIMIT) catch return "n/a";
+    // description (truncated as needed)
+    append_limited(&list, task.desc, LIMIT) catch return "n/a";
+
+    if (task.due) |d| {
+        append_limited(&list, " due ", LIMIT) catch return "n/a";
+        append_limited(&list, d, LIMIT) catch return "n/a";
+    }
+
+    return list.toOwnedSlice() catch "n/a";
 }
 
 /// Public value the status-bar will import.
