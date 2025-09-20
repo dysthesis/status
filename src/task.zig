@@ -25,7 +25,11 @@ fn run_command(allocator: std.mem.Allocator) ![]u8 {
 
 /// Parse a Taskwarrior JSON array (produced by `task ... export`) and pull out description and due
 /// date of the first task. Returns freshly allocated slices owned by `a`.
-fn first_task(json: []const u8, a: std.mem.Allocator) ?struct { desc: []const u8, due_raw: ?[]const u8 } {
+fn first_task(json: []const u8, a: std.mem.Allocator, now_epoch: i64) ?struct {
+    desc: []const u8,
+    due_raw: ?[]const u8,
+    due_within_week: usize,
+} {
     const trimmed = std.mem.trim(u8, json, " \t\r\n");
     if (trimmed.len == 0 or std.mem.eql(u8, trimmed, "[]"))
         return null; // nothing ready
@@ -43,9 +47,23 @@ fn first_task(json: []const u8, a: std.mem.Allocator) ?struct { desc: []const u8
 
     var best_idx: usize = 0;
     var best_urg: f64 = -1;
+    var due_in_week_count: usize = 0;
+    const week_window_end = now_epoch + (7 * 24 * 60 * 60);
+
     for (root.array.items, 0..) |item, idx| {
         if (item != .object) continue; // safety
-        const urg = if (item.object.get("urgency")) |u|
+        const obj = item.object;
+
+        if (obj.get("due")) |due_v| {
+            if (due_v == .string and due_v.string.len >= 8) {
+                if (parseDueEpoch(due_v.string)) |due_epoch| {
+                    if (due_epoch >= now_epoch and due_epoch <= week_window_end)
+                        due_in_week_count += 1;
+                }
+            }
+        }
+
+        const urg = if (obj.get("urgency")) |u|
             switch (u) {
                 .float => u.float,
                 .integer => @as(f64, @floatFromInt(u.integer)),
@@ -80,7 +98,7 @@ fn first_task(json: []const u8, a: std.mem.Allocator) ?struct { desc: []const u8
     const desc_buf = a.alloc(u8, desc_src.len) catch return null;
     std.mem.copyForwards(u8, desc_buf, desc_src);
 
-    return .{ .desc = desc_buf, .due_raw = due_opt };
+    return .{ .desc = desc_buf, .due_raw = due_opt, .due_within_week = due_in_week_count };
 }
 
 fn parseUint(comptime T: type, s: []const u8) ?T {
@@ -158,7 +176,8 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
     };
     defer allocator.free(raw);
 
-    const task_opt = first_task(raw, allocator);
+    const now_epoch: i64 = @as(i64, @intCast(c.time(null)));
+    const task_opt = first_task(raw, allocator, now_epoch);
     if (task_opt == null)
         return std.fmt.allocPrint(allocator, "{s} No tasks", .{self.icons}) catch "n/a"[0..];
 
@@ -185,12 +204,20 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
     append_limited(&list, self.icons, LIMIT) catch return "n/a";
     // space
     append_limited(&list, " ", LIMIT) catch return "n/a";
+    // muted count of tasks due within the next 7 days, only when non-zero
+    if (task.due_within_week > 0) {
+        append_limited(&list, "^fg(444444)(", LIMIT) catch return "n/a";
+        var count_buf: [20]u8 = undefined;
+        const count_slice = std.fmt.bufPrint(count_buf[0..], "{d}", .{task.due_within_week}) catch return "n/a";
+        append_limited(&list, count_slice, LIMIT) catch return "n/a";
+        append_limited(&list, ")^fg() ", LIMIT) catch return "n/a";
+        append_limited(&list, " ", LIMIT) catch return "n/a";
+    }
     // description (truncated as needed)
     append_limited(&list, task.desc, LIMIT) catch return "n/a";
 
     if (task.due_raw) |d| {
         // Try to parse relative time; fall back to YYYY-MM-DD if parsing fails
-        const now_epoch: i64 = @as(i64, @intCast(c.time(null)));
         if (parseDueEpoch(d)) |due_epoch| {
             var buf: [24]u8 = undefined;
             const rel = formatRelative(buf[0..], now_epoch, due_epoch);
