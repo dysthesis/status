@@ -113,8 +113,8 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
 
     return std.fmt.allocPrint(
         allocator,
-        "{s} {d}%^fg(444444) ({d}/{d})^fg()",
-        .{ self.icons, percent, current, max_val },
+        "{s} {d}%",
+        .{ self.icons, percent },
     ) catch "n/a";
 }
 
