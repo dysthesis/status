@@ -2,6 +2,7 @@ const std = @import("std");
 const DELIM = "^fg(2A2A2A) |^fg()";
 
 const brightness = @import("brightness.zig");
+const battery = @import("battery.zig");
 const cpu = @import("cpu.zig");
 const clock = @import("clock.zig");
 const mem = @import("mem.zig");
@@ -12,7 +13,7 @@ const task = @import("task.zig");
 
 const tray_size = 0;
 
-const max_modules = 7;
+const max_modules = 8;
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -36,6 +37,10 @@ pub fn main() !void {
     modules_buf[module_count] = net.Net;
     module_count += 1;
 
+    if (battery.isSupported()) {
+        modules_buf[module_count] = battery.Battery;
+        module_count += 1;
+    }
     modules_buf[module_count] = mem.Mem;
     module_count += 1;
     modules_buf[module_count] = cpu.Cpu;

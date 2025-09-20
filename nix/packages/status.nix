@@ -20,6 +20,11 @@ stdenv.mkDerivation {
     makeWrapper
   ];
 
+  preBuild = ''
+    export ZIG_GLOBAL_CACHE_DIR="$TMPDIR/zig-cache"
+    export HOME="$TMPDIR"
+  '';
+
   zigBuildFlags = [
     "--release=small"
   ];
