@@ -7,6 +7,7 @@ const clock = @import("clock.zig");
 const net = @import("network.zig");
 const task = @import("task.zig");
 const module = @import("module.zig");
+const brightness = @import("brightness.zig");
 
 const tray_size = 0;
 
@@ -20,6 +21,7 @@ pub fn main() !void {
 
     const modules = [_]module.Module{
         task.Taskwarrior,
+        brightness.Brightness,
         net.Net,
         mem.Mem,
         cpu.Cpu,
