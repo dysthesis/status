@@ -1,23 +1,33 @@
 {
-  musl,
+  alsa-lib,
   pkg-config,
   zig,
   stdenv,
+  lib,
+  makeWrapper,
   ...
 }:
 stdenv.mkDerivation {
   pname = "status";
   version = "0.1.0";
   src = ../..;
-  buildInputs = [ musl.dev ];
+  buildInputs = [
+    alsa-lib
+  ];
   nativeBuildInputs = [
     zig.hook
     pkg-config
+    makeWrapper
   ];
 
   zigBuildFlags = [
-    "-Dtarget=x86_64-linux-musl" # statically link
     "--release=small"
   ];
+  postInstall = let
+    libPath = lib.makeLibraryPath [ alsa-lib ];
+  in ''
+    wrapProgram $out/bin/status \
+      --prefix LD_LIBRARY_PATH : ${libPath}
+  '';
   meta.mainPackage = "status";
 }

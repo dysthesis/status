@@ -7,11 +7,12 @@ const clock = @import("clock.zig");
 const mem = @import("mem.zig");
 const module = @import("module.zig");
 const net = @import("network.zig");
+const volume = @import("volume.zig");
 const task = @import("task.zig");
 
 const tray_size = 0;
 
-const max_modules = 6;
+const max_modules = 7;
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -30,6 +31,8 @@ pub fn main() !void {
         modules_buf[module_count] = brightness.Brightness;
         module_count += 1;
     }
+    modules_buf[module_count] = volume.Volume;
+    module_count += 1;
     modules_buf[module_count] = net.Net;
     module_count += 1;
 
