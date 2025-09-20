@@ -358,10 +358,10 @@ fn deriveState(agg: Aggregate) BatteryState {
 
 fn stateGlyph(state: BatteryState) []const u8 {
     return switch (state) {
-        .charging => " 󱐋 ",
+        .charging => "^fg(f9e2af) 󱐋 ^fg()",
         .discharging => "",
-        .full => " ✓ ",
-        .unknown => " ! ",
+        .full => "^fg(85AF5F) ✓ ^fg()",
+        .unknown => "^fg(FFAA88) ! ^fg()",
     };
 }
 
