@@ -218,11 +218,15 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
 
     if (task.due_raw) |d| {
         // Try to parse relative time; fall back to YYYY-MM-DD if parsing fails
+        const due_accent = "^fg(FFAA88)";
         if (parseDueEpoch(d)) |due_epoch| {
             var buf: [24]u8 = undefined;
             const rel = formatRelative(buf[0..], now_epoch, due_epoch);
-            append_limited(&list, " due ", LIMIT) catch return "n/a";
+            append_limited(&list, " ", LIMIT) catch return "n/a";
+            append_limited(&list, due_accent, LIMIT) catch return "n/a";
+            append_limited(&list, "due ", LIMIT) catch return "n/a";
             append_limited(&list, rel, LIMIT) catch return "n/a";
+            append_limited(&list, "^fg()", LIMIT) catch return "n/a";
         } else if (d.len >= 8) {
             var tmp: [10]u8 = undefined; // YYYY-MM-DD
             std.mem.copyForwards(u8, tmp[0..4], d[0..4]);
@@ -230,8 +234,11 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
             std.mem.copyForwards(u8, tmp[5..7], d[4..6]);
             tmp[7] = '-';
             std.mem.copyForwards(u8, tmp[8..10], d[6..8]);
-            append_limited(&list, " due ", LIMIT) catch return "n/a";
+            append_limited(&list, " ", LIMIT) catch return "n/a";
+            append_limited(&list, due_accent, LIMIT) catch return "n/a";
+            append_limited(&list, "due ", LIMIT) catch return "n/a";
             append_limited(&list, tmp[0..], LIMIT) catch return "n/a";
+            append_limited(&list, "^fg()", LIMIT) catch return "n/a";
         }
     }
 
