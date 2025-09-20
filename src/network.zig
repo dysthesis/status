@@ -4,6 +4,44 @@ const module = @import("module.zig");
 
 const State = struct { rx: u64, tx: u64, t_ns: i128 };
 var prev: ?State = null;
+const max_iface_len = 32;
+var last_iface_buf: [max_iface_len]u8 = undefined;
+var last_iface_len: usize = 0;
+var last_iface_valid = false;
+
+fn detectWirelessInterface(allocator: std.mem.Allocator) !?[]u8 {
+    var file = std.fs.openFileAbsolute("/proc/net/wireless", .{ .mode = .read_only }) catch |err| {
+        return switch (err) {
+            error.FileNotFound, error.AccessDenied => null,
+            else => err,
+        };
+    };
+    defer file.close();
+
+    var buf_reader = std.io.bufferedReader(file.reader());
+    var r = buf_reader.reader();
+
+    var line_index: usize = 0;
+    while (true) {
+        const maybe_line = try r.readUntilDelimiterOrEofAlloc(allocator, '\n', 8 * 1024);
+        const line = maybe_line orelse break;
+        defer allocator.free(line);
+
+        if (line_index < 2) {
+            line_index += 1;
+            continue;
+        }
+
+        const trimmed = std.mem.trimLeft(u8, line, " ");
+        if (trimmed.len == 0) continue;
+
+        const colon_index = std.mem.indexOfScalar(u8, trimmed, ':') orelse continue;
+        const iface = trimmed[0 .. colon_index + 1];
+        return try allocator.dupe(u8, iface);
+    }
+
+    return null;
+}
 
 fn formatBytesPerSec(bps: u64, allocator: std.mem.Allocator) ![]const u8 {
     const units = [_][]const u8{ "B/s", "KiB/s", "MiB/s", "GiB/s", "TiB/s" };
@@ -64,7 +102,31 @@ fn readCounters(iface: []const u8, allocator: std.mem.Allocator) !?State {
 }
 
 fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
-    const iface = "wlp4s0:"; // change or read from cfg
+    const maybe_iface = detectWirelessInterface(allocator) catch |err| {
+        std.log.err("net module: {s}", .{@errorName(err)});
+        return "n/a";
+    };
+
+    const iface = maybe_iface orelse return "n/a";
+    defer allocator.free(iface);
+
+    if (iface.len > max_iface_len) {
+        std.log.err("net module: iface name too long", .{});
+        return "n/a";
+    }
+
+    const iface_changed = if (last_iface_valid)
+        !std.mem.eql(u8, last_iface_buf[0..last_iface_len], iface)
+    else
+        true;
+
+    if (iface_changed) {
+        std.mem.copyForwards(u8, last_iface_buf[0..iface.len], iface);
+        last_iface_len = iface.len;
+        last_iface_valid = true;
+        prev = null;
+    }
+
     const now = readCounters(iface, allocator) catch |err| {
         std.log.err("net module: {s}", .{@errorName(err)});
         return "n/a";
@@ -88,10 +150,16 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
 
     const down_txt = formatBytesPerSec(down_Bps, allocator) catch "n/a";
     const up_txt = formatBytesPerSec(up_Bps, allocator) catch "n/a";
+
+    const display_iface = if (iface.len > 0 and iface[iface.len - 1] == ':')
+        iface[0 .. iface.len - 1]
+    else
+        iface;
+
     return std.fmt.allocPrint(
         allocator,
-        "{s}{s}^fg(FFAA88) ↓ ^fg(){s}^fg(FFAA88) ↑^fg()",
-        .{ self.icons, down_txt, up_txt },
+        "{s}{s} {s}^fg(FFAA88) ↓ ^fg(){s}^fg(FFAA88) ↑^fg()",
+        .{ self.icons, display_iface, down_txt, up_txt },
     ) catch "n/a";
 }
 
