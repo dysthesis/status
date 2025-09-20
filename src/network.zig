@@ -158,8 +158,8 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
 
     return std.fmt.allocPrint(
         allocator,
-        "{s}{s} {s}^fg(FFAA88) ↓ ^fg(){s}^fg(FFAA88) ↑^fg()",
-        .{ self.icons, display_iface, down_txt, up_txt },
+        "{s} {s}^fg(FFAA88) ↓ ^fg(){s}^fg(FFAA88) ↑^fg() ^fg(444444)({s})^fg()",
+        .{ self.icons, down_txt, up_txt, display_iface },
     ) catch "n/a";
 }
 

@@ -358,10 +358,10 @@ fn deriveState(agg: Aggregate) BatteryState {
 
 fn stateGlyph(state: BatteryState) []const u8 {
     return switch (state) {
-        .charging => "↑",
-        .discharging => "↓",
-        .full => "✓",
-        .unknown => "!",
+        .charging => " 󱐋 ",
+        .discharging => "",
+        .full => " ✓ ",
+        .unknown => " ! ",
     };
 }
 
@@ -533,7 +533,7 @@ fn toLowerAscii(ch: u8) u8 {
 
 pub const Battery = module.Module{
     .name = "Battery",
-    .icons = "^fg(57C7FF)  󱐋 ^fg()",
+    .icons = "^fg(57C7FF)  ^fg()",
     .fetch = fetch,
 };
 
