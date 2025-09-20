@@ -15,10 +15,34 @@ fn parseStrictDecimal(token: []const u8) ?u64 {
     return std.fmt.parseInt(u64, trimmed, 10) catch return null;
 }
 
-pub fn isSupported(allocator: std.mem.Allocator) bool {
-    const raw = runBrightnessctl(allocator) catch return false;
-    defer allocator.free(raw);
-    return parseMachineReadable(raw) != null;
+fn maxBrightnessGreaterThanZero(base: []const u8) bool {
+    var dir = std.fs.openDirAbsolute(base, .{ .iterate = true }) catch return false;
+    defer dir.close();
+
+    var it = dir.iterate();
+    while (it.next() catch return false) |entry| {
+        if (entry.name.len == 0) continue;
+        if (entry.name[0] == '.') continue;
+
+        var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+        const path = std.fmt.bufPrint(&path_buf, "{s}/{s}/max_brightness", .{ base, entry.name }) catch continue;
+
+        const file = std.fs.openFileAbsolute(path, .{ .mode = .read_only }) catch continue;
+        defer file.close();
+
+        var buf: [32]u8 = undefined;
+        const read = file.read(&buf) catch continue;
+        if (read == 0) continue;
+        const trimmed = std.mem.trim(u8, buf[0..read], " \t\r\n");
+        if (trimmed.len == 0) continue;
+        const value = std.fmt.parseInt(u64, trimmed, 10) catch continue;
+        if (value > 0) return true;
+    }
+    return false;
+}
+
+pub fn isSupported() bool {
+    return maxBrightnessGreaterThanZero("/sys/class/backlight");
 }
 
 fn runBrightnessctl(allocator: std.mem.Allocator) ![]u8 {
