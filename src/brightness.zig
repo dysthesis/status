@@ -87,23 +87,23 @@ pub fn isSupported() bool {
 }
 
 fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
-    if (!ensureDevice()) return "n/a";
+    if (!ensureDevice()) return "^fg(444444)n/a^fg()";
 
     const dir_path = device_dir_buf[0..device_dir_len];
 
     const current = readBrightness(dir_path) orelse {
         detection_state = .unknown;
-        return "n/a";
+        return "^fg(444444)n/a^fg()";
     };
 
     const max_val = readMax(dir_path) orelse {
         detection_state = .unknown;
-        return "n/a";
+        return "^fg(444444)n/a^fg()";
     };
 
     if (max_val == 0) {
         detection_state = .unknown;
-        return "n/a";
+        return "^fg(444444)n/a^fg()";
     }
 
     var percent_u128 = (@as(u128, current) * 100) + (@as(u128, max_val) / 2);
@@ -115,7 +115,7 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
         allocator,
         "{s} {d}%",
         .{ self.icons, percent },
-    ) catch "n/a";
+    ) catch "^fg(444444)n/a^fg()";
 }
 
 pub const Brightness = module.Module{

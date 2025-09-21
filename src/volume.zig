@@ -453,7 +453,7 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
     backend_mutex.unlock();
 
     if (!ready) {
-        return "n/a";
+        return "^fg(444444)n/a^fg()";
     }
 
     return renderOutput(self, allocator, info);
