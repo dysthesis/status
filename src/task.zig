@@ -185,36 +185,36 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
     const task = task_opt.?;
     const LIMIT: usize = 100;
 
-    var list = std.ArrayList(u8).init(allocator);
-    defer list.deinit();
+    var list = std.ArrayList(u8){ .items = &.{}, .capacity = 0 };
+    defer list.deinit(allocator);
 
     // Reserve up to LIMIT to reduce reallocs; ignore error, we can still append.
-    _ = list.ensureTotalCapacityPrecise(LIMIT) catch {};
+    _ = list.ensureTotalCapacityPrecise(allocator, LIMIT) catch {};
 
     const append_limited = struct {
-        fn run(l: *std.ArrayList(u8), seg: []const u8, limit: usize) !void {
+        fn run(l: *std.ArrayList(u8), alloc: std.mem.Allocator, seg: []const u8, limit: usize) !void {
             if (l.items.len >= limit) return; // already full
             const rem = limit - l.items.len;
             const take = if (seg.len > rem) rem else seg.len;
-            try l.appendSlice(seg[0..take]);
+            try l.appendSlice(alloc, seg[0..take]);
         }
     }.run;
 
     // icons
-    append_limited(&list, self.icons, LIMIT) catch return "n/a";
+    append_limited(&list, allocator,self.icons, LIMIT) catch return "n/a";
     // space
-    append_limited(&list, " ", LIMIT) catch return "n/a";
+    append_limited(&list, allocator," ", LIMIT) catch return "n/a";
     // muted count of tasks due within the next 7 days, only when non-zero
     if (task.due_within_week > 0) {
-        append_limited(&list, "^fg(444444)(", LIMIT) catch return "n/a";
+        append_limited(&list, allocator,"^fg(444444)(", LIMIT) catch return "n/a";
         var count_buf: [20]u8 = undefined;
         const count_slice = std.fmt.bufPrint(count_buf[0..], "{d}", .{task.due_within_week}) catch return "n/a";
-        append_limited(&list, count_slice, LIMIT) catch return "n/a";
-        append_limited(&list, ")^fg() ", LIMIT) catch return "n/a";
-        append_limited(&list, " ", LIMIT) catch return "n/a";
+        append_limited(&list, allocator,count_slice, LIMIT) catch return "n/a";
+        append_limited(&list, allocator,")^fg() ", LIMIT) catch return "n/a";
+        append_limited(&list, allocator," ", LIMIT) catch return "n/a";
     }
     // description (truncated as needed)
-    append_limited(&list, task.desc, LIMIT) catch return "n/a";
+    append_limited(&list, allocator,task.desc, LIMIT) catch return "n/a";
 
     if (task.due_raw) |d| {
         // Try to parse relative time; fall back to YYYY-MM-DD if parsing fails
@@ -222,11 +222,11 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
         if (parseDueEpoch(d)) |due_epoch| {
             var buf: [24]u8 = undefined;
             const rel = formatRelative(buf[0..], now_epoch, due_epoch);
-            append_limited(&list, " ", LIMIT) catch return "n/a";
-            append_limited(&list, due_accent, LIMIT) catch return "n/a";
-            append_limited(&list, "due ", LIMIT) catch return "n/a";
-            append_limited(&list, rel, LIMIT) catch return "n/a";
-            append_limited(&list, "^fg()", LIMIT) catch return "n/a";
+            append_limited(&list, allocator," ", LIMIT) catch return "n/a";
+            append_limited(&list, allocator,due_accent, LIMIT) catch return "n/a";
+            append_limited(&list, allocator,"due ", LIMIT) catch return "n/a";
+            append_limited(&list, allocator,rel, LIMIT) catch return "n/a";
+            append_limited(&list, allocator,"^fg()", LIMIT) catch return "n/a";
         } else if (d.len >= 8) {
             var tmp: [10]u8 = undefined; // YYYY-MM-DD
             std.mem.copyForwards(u8, tmp[0..4], d[0..4]);
@@ -234,15 +234,15 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
             std.mem.copyForwards(u8, tmp[5..7], d[4..6]);
             tmp[7] = '-';
             std.mem.copyForwards(u8, tmp[8..10], d[6..8]);
-            append_limited(&list, " ", LIMIT) catch return "n/a";
-            append_limited(&list, due_accent, LIMIT) catch return "n/a";
-            append_limited(&list, "due ", LIMIT) catch return "n/a";
-            append_limited(&list, tmp[0..], LIMIT) catch return "n/a";
-            append_limited(&list, "^fg()", LIMIT) catch return "n/a";
+            append_limited(&list, allocator," ", LIMIT) catch return "n/a";
+            append_limited(&list, allocator,due_accent, LIMIT) catch return "n/a";
+            append_limited(&list, allocator,"due ", LIMIT) catch return "n/a";
+            append_limited(&list, allocator,tmp[0..], LIMIT) catch return "n/a";
+            append_limited(&list, allocator,"^fg()", LIMIT) catch return "n/a";
         }
     }
 
-    return list.toOwnedSlice() catch "n/a";
+    return list.toOwnedSlice(allocator) catch "n/a";
 }
 
 /// Public value the status-bar will import.

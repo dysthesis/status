@@ -20,8 +20,7 @@ pub fn main() !void {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    var bw = std.io.bufferedWriter(std.io.getStdOut().writer());
-    const out = bw.writer();
+    const stdout = std.fs.File{ .handle = std.posix.STDOUT_FILENO };
 
     var modules_buf: [max_modules]module.Module = undefined;
     var module_count: usize = 0;
@@ -63,8 +62,8 @@ pub fn main() !void {
         const status = try std.mem.concat(alloc, u8, parts[0 .. module_count * 2]);
         const tray_padding = " " ** tray_size;
 
-        try out.print("{s}{s}\n", .{ status, tray_padding });
-        try bw.flush();
-        std.time.sleep(1_000_000_000);
+        const output = try std.fmt.allocPrint(alloc, "{s}{s}\n", .{ status, tray_padding });
+        try stdout.writeAll(output);
+        std.Thread.sleep(1_000_000_000);
     }
 }

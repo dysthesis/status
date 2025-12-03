@@ -18,15 +18,12 @@ fn detectWirelessInterface(allocator: std.mem.Allocator) !?[]u8 {
     };
     defer file.close();
 
-    var buf_reader = std.io.bufferedReader(file.reader());
-    var r = buf_reader.reader();
+    const content = try file.readToEndAlloc(allocator, 8 * 1024);
+    defer allocator.free(content);
 
+    var line_iter = std.mem.splitScalar(u8, content, '\n');
     var line_index: usize = 0;
-    while (true) {
-        const maybe_line = try r.readUntilDelimiterOrEofAlloc(allocator, '\n', 8 * 1024);
-        const line = maybe_line orelse break;
-        defer allocator.free(line);
-
+    while (line_iter.next()) |line| {
         if (line_index < 2) {
             line_index += 1;
             continue;
@@ -52,32 +49,30 @@ fn formatBytesPerSec(bps: u64, allocator: std.mem.Allocator) ![]const u8 {
         value /= 1024.0;
     }
 
-    var list = std.ArrayList(u8).init(allocator);
-    errdefer list.deinit();
+    var list = std.ArrayList(u8){ .items = &.{}, .capacity = 0 };
+    errdefer list.deinit(allocator);
 
-    const w = list.writer();
+    const w = list.writer(allocator);
     if (value < 100.0) {
         try w.print("{d:.1} {s}", .{ value, units[idx] });
     } else {
         try w.print("{d:.0} {s}", .{ value, units[idx] });
     }
-    return list.toOwnedSlice(); // caller frees
+    return list.toOwnedSlice(allocator); // caller frees
 }
 
 fn readCounters(iface: []const u8, allocator: std.mem.Allocator) !?State {
     var file = try std.fs.openFileAbsolute("/proc/net/dev", .{ .mode = .read_only });
     defer file.close();
 
-    var buf_reader = std.io.bufferedReader(file.reader());
-    var r = buf_reader.reader();
+    const content = try file.readToEndAlloc(allocator, 8 * 1024);
+    defer allocator.free(content);
 
-    _ = try r.readUntilDelimiterOrEofAlloc(allocator, '\n', 8 * 1024);
-    _ = try r.readUntilDelimiterOrEofAlloc(allocator, '\n', 8 * 1024);
+    var line_iter = std.mem.splitScalar(u8, content, '\n');
+    _ = line_iter.next(); // skip first line
+    _ = line_iter.next(); // skip second line
 
-    while (true) {
-        const maybe = try r.readUntilDelimiterOrEofAlloc(allocator, '\n', 8 * 1024);
-        const line = maybe orelse break;
-        defer allocator.free(line);
+    while (line_iter.next()) |line| {
 
         var slice = line;
         while (slice.len > 0 and slice[0] == ' ')

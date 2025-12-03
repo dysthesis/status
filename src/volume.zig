@@ -6,21 +6,21 @@ const DynLib = std.DynLib;
 const SndMixer = opaque {};
 const SndMixerElem = opaque {};
 
-const FnMixerOpen = *const fn ([*c]?*SndMixer, c_int) callconv(.C) c_int;
-const FnMixerClose = *const fn (*SndMixer) callconv(.C) c_int;
-const FnMixerAttach = *const fn (*SndMixer, [*:0]const u8) callconv(.C) c_int;
-const FnSelemRegister = *const fn (*SndMixer, ?*anyopaque, ?*anyopaque) callconv(.C) c_int;
-const FnMixerLoad = *const fn (*SndMixer) callconv(.C) c_int;
-const FnFirstElem = *const fn (*SndMixer) callconv(.C) ?*SndMixerElem;
-const FnElemNext = *const fn (*SndMixerElem) callconv(.C) ?*SndMixerElem;
-const FnSelemIsActive = *const fn (*SndMixerElem) callconv(.C) c_int;
-const FnSelemHasPlaybackVolume = *const fn (*SndMixerElem) callconv(.C) c_int;
-const FnHandleEvents = *const fn (*SndMixer) callconv(.C) c_int;
-const FnSelemHasPlaybackChannel = *const fn (*SndMixerElem, c_int) callconv(.C) c_int;
-const FnSelemGetPlaybackVolume = *const fn (*SndMixerElem, c_int, *c_long) callconv(.C) c_int;
-const FnSelemHasPlaybackSwitch = *const fn (*SndMixerElem) callconv(.C) c_int;
-const FnSelemGetPlaybackSwitch = *const fn (*SndMixerElem, c_int, *c_int) callconv(.C) c_int;
-const FnSelemGetPlaybackVolumeRange = *const fn (*SndMixerElem, *c_long, *c_long) callconv(.C) c_int;
+const FnMixerOpen = *const fn ([*c]?*SndMixer, c_int) callconv(.c) c_int;
+const FnMixerClose = *const fn (*SndMixer) callconv(.c) c_int;
+const FnMixerAttach = *const fn (*SndMixer, [*:0]const u8) callconv(.c) c_int;
+const FnSelemRegister = *const fn (*SndMixer, ?*anyopaque, ?*anyopaque) callconv(.c) c_int;
+const FnMixerLoad = *const fn (*SndMixer) callconv(.c) c_int;
+const FnFirstElem = *const fn (*SndMixer) callconv(.c) ?*SndMixerElem;
+const FnElemNext = *const fn (*SndMixerElem) callconv(.c) ?*SndMixerElem;
+const FnSelemIsActive = *const fn (*SndMixerElem) callconv(.c) c_int;
+const FnSelemHasPlaybackVolume = *const fn (*SndMixerElem) callconv(.c) c_int;
+const FnHandleEvents = *const fn (*SndMixer) callconv(.c) c_int;
+const FnSelemHasPlaybackChannel = *const fn (*SndMixerElem, c_int) callconv(.c) c_int;
+const FnSelemGetPlaybackVolume = *const fn (*SndMixerElem, c_int, *c_long) callconv(.c) c_int;
+const FnSelemHasPlaybackSwitch = *const fn (*SndMixerElem) callconv(.c) c_int;
+const FnSelemGetPlaybackSwitch = *const fn (*SndMixerElem, c_int, *c_int) callconv(.c) c_int;
+const FnSelemGetPlaybackVolumeRange = *const fn (*SndMixerElem, *c_long, *c_long) callconv(.c) c_int;
 
 const ALSA_CHANNEL_MAX: c_int = 31;
 
