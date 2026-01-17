@@ -32,7 +32,7 @@
       "x86_64-linux"
     ];
 
-    forAllSystems = lib.nixpressions.forAllSystems {inherit systems;};
+    forAllSystems = lib.babel.forAllSystems {inherit systems;};
 
     treefmt = forAllSystems (pkgs: treefmt-nix.lib.evalModule pkgs ./nix/formatters);
   in
