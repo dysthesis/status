@@ -10,20 +10,20 @@
     };
 
     # Personal library
-    babel = {
-      url = "github:dysthesis/babel";
+    nixpressions = {
+      url = "github:dysthesis/nixpressions";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
   outputs = inputs @ {
     self,
-    babel,
+    nixpressions,
     nixpkgs,
     treefmt-nix,
     ...
   }: let
     inherit (builtins) mapAttrs;
-    inherit (babel) mkLib;
+    inherit (nixpressions) mkLib;
     lib = mkLib nixpkgs;
 
     # Systems to support
@@ -32,7 +32,7 @@
       "x86_64-linux"
     ];
 
-    forAllSystems = lib.babel.forAllSystems {inherit systems;};
+    forAllSystems = lib.nixpressions.forAllSystems {inherit systems;};
 
     treefmt = forAllSystems (pkgs: treefmt-nix.lib.evalModule pkgs ./nix/formatters);
   in
