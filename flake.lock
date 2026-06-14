@@ -1,26 +1,5 @@
 {
   "nodes": {
-    "babel": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "treefmt": "treefmt"
-      },
-      "locked": {
-        "lastModified": 1762316746,
-        "narHash": "sha256-MUx3lqGro+9zzrFFZ1MgBQa6gdzXrzCZ38D4xQIqaSg=",
-        "owner": "dysthesis",
-        "repo": "babel",
-        "rev": "579e831c8d422c607608f1df47e32836c1a3b51d",
-        "type": "github"
-      },
-      "original": {
-        "owner": "dysthesis",
-        "repo": "babel",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1764767520,
@@ -36,17 +15,38 @@
         "type": "github"
       }
     },
+    "nixpressions": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "treefmt": "treefmt"
+      },
+      "locked": {
+        "lastModified": 1764825587,
+        "narHash": "sha256-lJXQsUsKhlkZ4SH1ovKr39A6YCOnwchqPZeRXBKytLo=",
+        "owner": "dysthesis",
+        "repo": "nixpressions",
+        "rev": "82418c95524c5a77ba6578b037bf3ece31b4e8e6",
+        "type": "github"
+      },
+      "original": {
+        "owner": "dysthesis",
+        "repo": "nixpressions",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
-        "babel": "babel",
         "nixpkgs": "nixpkgs",
+        "nixpressions": "nixpressions",
         "treefmt-nix": "treefmt-nix"
       }
     },
     "treefmt": {
       "inputs": {
         "nixpkgs": [
-          "babel",
+          "nixpressions",
           "nixpkgs"
         ]
       },
