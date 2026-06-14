@@ -15,12 +15,10 @@ const tray_size = 0;
 
 const max_modules = 8;
 
-pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+pub fn main(init: std.process.Init) !void {
+    const alloc = init.arena.allocator();
 
-    const stdout = std.fs.File{ .handle = std.posix.STDOUT_FILENO };
+    const stdout = std.Io.File.stdout();
 
     var modules_buf: [max_modules]module.Module = undefined;
     var module_count: usize = 0;
@@ -50,7 +48,7 @@ pub fn main() !void {
     const modules = modules_buf[0..module_count];
 
     while (true) {
-        _ = arena.reset(.free_all);
+        _ = init.arena.reset(.free_all);
 
         var parts: [max_modules * 2][]const u8 = undefined;
 
@@ -63,7 +61,7 @@ pub fn main() !void {
         const tray_padding = " " ** tray_size;
 
         const output = try std.fmt.allocPrint(alloc, "{s}{s}\n", .{ status, tray_padding });
-        try stdout.writeAll(output);
+        try stdout.writeStreamingAll(init.io, output);
         std.Thread.sleep(1_000_000_000);
     }
 }
