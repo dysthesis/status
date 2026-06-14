@@ -1,12 +1,19 @@
 const std = @import("std");
 const module = @import("module.zig");
 
+fn currentIo() std.Io {
+    return std.Io.Threaded.global_single_threaded.io();
+}
+
 fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
-    const file = std.fs.openFileAbsolute("/proc/meminfo", .{ .mode = .read_only }) catch return "n/a"[0..];
-    defer file.close();
+    const io = currentIo();
+    const file = std.Io.Dir.openFileAbsolute(io, "/proc/meminfo", .{ .mode = .read_only }) catch return "n/a"[0..];
+    defer file.close(io);
 
     var buf: [2048]u8 = undefined;
-    const len = file.readAll(&buf) catch return "n/a";
+    var reader_buf: [512]u8 = undefined;
+    var reader = file.readerStreaming(io, &reader_buf);
+    const len = reader.interface.readSliceShort(&buf) catch return "n/a";
 
     var total_kib: u64 = 0;
     var avail_kib: u64 = 0;

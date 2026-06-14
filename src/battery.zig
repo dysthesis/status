@@ -11,6 +11,10 @@ const DetectionState = struct {
 
 var detection_state = DetectionState{ .known = false };
 
+fn currentIo() std.Io {
+    return std.Io.Threaded.global_single_threaded.io();
+}
+
 const low_battery_threshold_pct = 15.0;
 const degrade_threshold_ratio = 0.8;
 const max_eta_hours = 24.0;
@@ -133,14 +137,15 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
 }
 
 fn collectSysfs() ?Aggregate {
-    var dir = std.fs.openDirAbsolute(sysfs_power_dir, .{ .iterate = true }) catch return null;
-    defer dir.close();
+    const io = currentIo();
+    var dir = std.Io.Dir.openDirAbsolute(io, sysfs_power_dir, .{ .iterate = true }) catch return null;
+    defer dir.close(io);
 
     var agg = Aggregate{};
 
     var it = dir.iterate();
     while (true) {
-        const next = it.next() catch return null;
+        const next = it.next(io) catch return null;
         if (next == null) break;
         const entry = next.?;
         if (entry.name.len == 0 or entry.name[0] == '.') continue;
@@ -158,14 +163,15 @@ fn collectSysfs() ?Aggregate {
 }
 
 fn collectAcpi() ?Aggregate {
-    var dir = std.fs.openDirAbsolute(acpi_battery_dir, .{ .iterate = true }) catch return null;
-    defer dir.close();
+    const io = currentIo();
+    var dir = std.Io.Dir.openDirAbsolute(io, acpi_battery_dir, .{ .iterate = true }) catch return null;
+    defer dir.close(io);
 
     var agg = Aggregate{};
 
     var it = dir.iterate();
     while (true) {
-        const next = it.next() catch return null;
+        const next = it.next(io) catch return null;
         if (next == null) break;
         const entry = next.?;
         if (entry.name.len == 0 or entry.name[0] == '.') continue;
@@ -404,10 +410,13 @@ fn formatEta(eta_hours: ?f64, buf: *[8]u8) []const u8 {
 fn readTrimmed(dir: []const u8, file: []const u8, buf: []u8) ?[]const u8 {
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
     const path = std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ dir, file }) catch return null;
-    const f = std.fs.openFileAbsolute(path, .{ .mode = .read_only }) catch return null;
-    defer f.close();
+    const io = currentIo();
+    const f = std.Io.Dir.openFileAbsolute(io, path, .{ .mode = .read_only }) catch return null;
+    defer f.close(io);
 
-    const amt = f.read(buf) catch return null;
+    var reader_buf: [128]u8 = undefined;
+    var reader = f.readerStreaming(io, &reader_buf);
+    const amt = reader.interface.readSliceShort(buf) catch return null;
     if (amt == 0) return null;
     return std.mem.trim(u8, buf[0..amt], " \t\r\n");
 }
@@ -468,9 +477,12 @@ fn currentMagnitude(current_now: ?i64) ?u128 {
 fn readWholeFile(dir: []const u8, file: []const u8, buf: []u8) ?[]const u8 {
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
     const path = std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ dir, file }) catch return null;
-    const f = std.fs.openFileAbsolute(path, .{ .mode = .read_only }) catch return null;
-    defer f.close();
-    const amt = f.readAll(buf) catch return null;
+    const io = currentIo();
+    const f = std.Io.Dir.openFileAbsolute(io, path, .{ .mode = .read_only }) catch return null;
+    defer f.close(io);
+    var reader_buf: [512]u8 = undefined;
+    var reader = f.readerStreaming(io, &reader_buf);
+    const amt = reader.interface.readSliceShort(buf) catch return null;
     if (amt == 0) return null;
     return buf[0..amt];
 }
@@ -553,12 +565,13 @@ fn detectBatteryPresence() bool {
 }
 
 fn detectSysfsPresence() bool {
-    var dir = std.fs.openDirAbsolute(sysfs_power_dir, .{ .iterate = true }) catch return false;
-    defer dir.close();
+    const io = currentIo();
+    var dir = std.Io.Dir.openDirAbsolute(io, sysfs_power_dir, .{ .iterate = true }) catch return false;
+    defer dir.close(io);
 
     var it = dir.iterate();
     while (true) {
-        const next = it.next() catch return false;
+        const next = it.next(io) catch return false;
         if (next == null) break;
         const entry = next.?;
         if (entry.name.len == 0 or entry.name[0] == '.') continue;
@@ -570,12 +583,13 @@ fn detectSysfsPresence() bool {
 }
 
 fn detectAcpiPresence() bool {
-    var dir = std.fs.openDirAbsolute(acpi_battery_dir, .{ .iterate = true }) catch return false;
-    defer dir.close();
+    const io = currentIo();
+    var dir = std.Io.Dir.openDirAbsolute(io, acpi_battery_dir, .{ .iterate = true }) catch return false;
+    defer dir.close(io);
 
     var it = dir.iterate();
     while (true) {
-        const next = it.next() catch return false;
+        const next = it.next(io) catch return false;
         if (next == null) break;
         const entry = next.?;
         if (entry.name.len == 0 or entry.name[0] == '.') continue;

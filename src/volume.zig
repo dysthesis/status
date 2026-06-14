@@ -56,7 +56,11 @@ const MUTED_ICON = "^fg(66CCFF)  󰖁 ^fg()";
 
 var backend_state: Backend = .uninitialized;
 var pactl_state: PactlState = .unknown;
-var backend_mutex = std.Thread.Mutex{};
+var backend_mutex = std.Io.Mutex.init;
+
+fn currentIo() std.Io {
+    return std.Io.Threaded.global_single_threaded.io();
+}
 
 var alsa_lib: ?DynLib = null;
 var alsa_fns: ?AlsaFns = null;
@@ -271,11 +275,11 @@ fn queryAlsa(info: *VolumeInfo) bool {
     return true;
 }
 
-fn runCommand(allocator: std.mem.Allocator, argv: []const []const u8) !std.process.Child.RunResult {
-    return std.process.Child.run(.{
-        .allocator = allocator,
+fn runCommand(allocator: std.mem.Allocator, argv: []const []const u8) !std.process.RunResult {
+    return std.process.run(allocator, currentIo(), .{
         .argv = argv,
-        .max_output_bytes = 16_384,
+        .stdout_limit = .limited(16_384),
+        .stderr_limit = .limited(16_384),
     });
 }
 
@@ -342,7 +346,7 @@ fn queryPactl(info: *VolumeInfo, allocator: std.mem.Allocator) bool {
     }
 
     switch (volume_result.term) {
-        .Exited => |code| if (code != 0) return false,
+        .exited => |code| if (code != 0) return false,
         else => return false,
     }
 
@@ -364,7 +368,7 @@ fn queryPactl(info: *VolumeInfo, allocator: std.mem.Allocator) bool {
     }
 
     switch (mute_result.term) {
-        .Exited => |code| if (code != 0) return false,
+        .exited => |code| if (code != 0) return false,
         else => return false,
     }
 
@@ -448,9 +452,10 @@ fn renderOutput(self: module.Module, allocator: std.mem.Allocator, info: VolumeI
 fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
     var info: VolumeInfo = undefined;
 
-    backend_mutex.lock();
+    const io = currentIo();
+    backend_mutex.lockUncancelable(io);
     const ready = ensureInfo(&info, allocator);
-    backend_mutex.unlock();
+    backend_mutex.unlock(io);
 
     if (!ready) {
         return "^fg(444444)n/a^fg()";

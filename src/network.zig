@@ -9,16 +9,31 @@ var last_iface_buf: [max_iface_len]u8 = undefined;
 var last_iface_len: usize = 0;
 var last_iface_valid = false;
 
+fn currentIo() std.Io {
+    return std.Io.Threaded.global_single_threaded.io();
+}
+
+fn readFileAlloc(path: []const u8, allocator: std.mem.Allocator, max_bytes: usize) ![]u8 {
+    const io = currentIo();
+    var file = try std.Io.Dir.openFileAbsolute(io, path, .{ .mode = .read_only });
+    defer file.close(io);
+
+    const buffer = try allocator.alloc(u8, max_bytes);
+    errdefer allocator.free(buffer);
+
+    var reader_buf: [1024]u8 = undefined;
+    var reader = file.readerStreaming(io, &reader_buf);
+    const len = try reader.interface.readSliceShort(buffer);
+    return try allocator.realloc(buffer, len);
+}
+
 fn detectWirelessInterface(allocator: std.mem.Allocator) !?[]u8 {
-    var file = std.fs.openFileAbsolute("/proc/net/wireless", .{ .mode = .read_only }) catch |err| {
+    const content = readFileAlloc("/proc/net/wireless", allocator, 8 * 1024) catch |err| {
         return switch (err) {
             error.FileNotFound, error.AccessDenied => null,
             else => err,
         };
     };
-    defer file.close();
-
-    const content = try file.readToEndAlloc(allocator, 8 * 1024);
     defer allocator.free(content);
 
     var line_iter = std.mem.splitScalar(u8, content, '\n');
@@ -29,7 +44,7 @@ fn detectWirelessInterface(allocator: std.mem.Allocator) !?[]u8 {
             continue;
         }
 
-        const trimmed = std.mem.trimLeft(u8, line, " ");
+        const trimmed = std.mem.trimStart(u8, line, " ");
         if (trimmed.len == 0) continue;
 
         const colon_index = std.mem.indexOfScalar(u8, trimmed, ':') orelse continue;
@@ -49,23 +64,14 @@ fn formatBytesPerSec(bps: u64, allocator: std.mem.Allocator) ![]const u8 {
         value /= 1024.0;
     }
 
-    var list = std.ArrayList(u8){ .items = &.{}, .capacity = 0 };
-    errdefer list.deinit(allocator);
-
-    const w = list.writer(allocator);
     if (value < 100.0) {
-        try w.print("{d:.1} {s}", .{ value, units[idx] });
-    } else {
-        try w.print("{d:.0} {s}", .{ value, units[idx] });
+        return try std.fmt.allocPrint(allocator, "{d:.1} {s}", .{ value, units[idx] });
     }
-    return list.toOwnedSlice(allocator); // caller frees
+    return try std.fmt.allocPrint(allocator, "{d:.0} {s}", .{ value, units[idx] });
 }
 
 fn readCounters(iface: []const u8, allocator: std.mem.Allocator) !?State {
-    var file = try std.fs.openFileAbsolute("/proc/net/dev", .{ .mode = .read_only });
-    defer file.close();
-
-    const content = try file.readToEndAlloc(allocator, 8 * 1024);
+    const content = try readFileAlloc("/proc/net/dev", allocator, 8 * 1024);
     defer allocator.free(content);
 
     var line_iter = std.mem.splitScalar(u8, content, '\n');
@@ -90,7 +96,7 @@ fn readCounters(iface: []const u8, allocator: std.mem.Allocator) !?State {
         return State{
             .rx = try std.fmt.parseInt(u64, rx_str, 10),
             .tx = try std.fmt.parseInt(u64, tx_str, 10),
-            .t_ns = std.time.nanoTimestamp(),
+            .t_ns = @as(i128, std.Io.Clock.awake.now(currentIo()).nanoseconds),
         };
     }
     return null;

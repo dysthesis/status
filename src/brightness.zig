@@ -13,12 +13,19 @@ var detection_state: DetectionState = .unknown;
 var device_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
 var device_dir_len: usize = 0;
 
+fn currentIo() std.Io {
+    return std.Io.Threaded.global_single_threaded.io();
+}
+
 fn readValue(path: []const u8) ?u64 {
-    const file = std.fs.openFileAbsolute(path, .{ .mode = .read_only }) catch return null;
-    defer file.close();
+    const io = currentIo();
+    const file = std.Io.Dir.openFileAbsolute(io, path, .{ .mode = .read_only }) catch return null;
+    defer file.close(io);
 
     var buf: [64]u8 = undefined;
-    const amt = file.read(&buf) catch return null;
+    var reader_buf: [64]u8 = undefined;
+    var reader = file.readerStreaming(io, &reader_buf);
+    const amt = reader.interface.readSliceShort(&buf) catch return null;
     if (amt == 0) return null;
 
     const trimmed = std.mem.trim(u8, buf[0..amt], " \t\r\n");
@@ -44,14 +51,15 @@ fn readMax(dir_path: []const u8) ?u64 {
 }
 
 fn detectDevice() bool {
-    var dir = std.fs.openDirAbsolute(backlight_dir, .{ .iterate = true }) catch {
+    const io = currentIo();
+    var dir = std.Io.Dir.openDirAbsolute(io, backlight_dir, .{ .iterate = true }) catch {
         detection_state = .unsupported;
         return false;
     };
-    defer dir.close();
+    defer dir.close(io);
 
     var it = dir.iterate();
-    while (it.next() catch return false) |entry| {
+    while (it.next(io) catch return false) |entry| {
         if (entry.name.len == 0) continue;
         if (entry.name[0] == '.') continue;
 

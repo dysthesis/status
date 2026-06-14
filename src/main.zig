@@ -62,6 +62,6 @@ pub fn main(init: std.process.Init) !void {
 
         const output = try std.fmt.allocPrint(alloc, "{s}{s}\n", .{ status, tray_padding });
         try stdout.writeStreamingAll(init.io, output);
-        std.Thread.sleep(1_000_000_000);
+        try init.io.sleep(.fromSeconds(1), .awake);
     }
 }

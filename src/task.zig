@@ -2,6 +2,10 @@ const std = @import("std");
 const module = @import("module.zig");
 const c = @cImport(@cInclude("time.h")); // time, timegm, struct tm
 
+fn currentIo() std.Io {
+    return std.Io.Threaded.global_single_threaded.io();
+}
+
 /// Helper that runs `task export` (or anything passed in `argv`) and returns its stdout as a fresh
 /// heap slice.
 fn run_command(allocator: std.mem.Allocator) ![]u8 {
@@ -14,10 +18,10 @@ fn run_command(allocator: std.mem.Allocator) ![]u8 {
         "export",
     };
 
-    const res = try std.process.Child.run(.{
-        .allocator = allocator,
+    const res = try std.process.run(allocator, currentIo(), .{
         .argv = argv,
-        .max_output_bytes = 16 * 1024, // enough for ~500 tasks
+        .stdout_limit = .limited(16 * 1024), // enough for ~500 tasks
+        .stderr_limit = .limited(16 * 1024),
     });
     defer allocator.free(res.stderr); // we don’t use stderr
     return res.stdout; // caller frees
