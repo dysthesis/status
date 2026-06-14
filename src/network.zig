@@ -27,6 +27,60 @@ fn readFileAlloc(path: []const u8, allocator: std.mem.Allocator, max_bytes: usiz
     return try allocator.realloc(buffer, len);
 }
 
+fn pathExists(path: []const u8) bool {
+    const io = currentIo();
+    std.Io.Dir.accessAbsolute(io, path, .{}) catch return false;
+    return true;
+}
+
+fn detectWiredInterface(allocator: std.mem.Allocator) !?[]u8 {
+    const content = readFileAlloc("/proc/net/dev", allocator, 8 * 1024) catch |err| {
+        return switch (err) {
+            error.FileNotFound, error.AccessDenied => null,
+            else => err,
+        };
+    };
+    defer allocator.free(content);
+
+    var line_iter = std.mem.splitScalar(u8, content, '\n');
+    _ = line_iter.next(); // skip first header line
+    _ = line_iter.next(); // skip second header line
+
+    var path_buf: [64]u8 = undefined;
+
+    while (line_iter.next()) |line| {
+        const trimmed = std.mem.trimStart(u8, line, " ");
+        const colon_index = std.mem.indexOfScalar(u8, trimmed, ':') orelse continue;
+        const name = trimmed[0..colon_index];
+        if (name.len == 0) continue;
+        if (std.mem.eql(u8, name, "lo")) continue;
+
+        // physical NICs have a /sys/class/net/<name>/device symlink; this
+        // filters out loopback and virtual interfaces (veth, bridges, vpn...).
+        const dev_path = std.fmt.bufPrint(&path_buf, "/sys/class/net/{s}/device", .{name}) catch continue;
+        if (!pathExists(dev_path)) continue;
+
+        // wireless interfaces are handled by detectWirelessInterface.
+        const wl_path = std.fmt.bufPrint(&path_buf, "/sys/class/net/{s}/wireless", .{name}) catch continue;
+        if (pathExists(wl_path)) continue;
+
+        // only report a link that is actually up.
+        const os_path = std.fmt.bufPrint(&path_buf, "/sys/class/net/{s}/operstate", .{name}) catch continue;
+        const operstate = readFileAlloc(os_path, allocator, 32) catch continue;
+        defer allocator.free(operstate);
+        if (!std.mem.eql(u8, std.mem.trim(u8, operstate, " \t\r\n"), "up")) continue;
+
+        return try std.fmt.allocPrint(allocator, "{s}:", .{name});
+    }
+
+    return null;
+}
+
+fn detectInterface(allocator: std.mem.Allocator) !?[]u8 {
+    if (try detectWiredInterface(allocator)) |iface| return iface;
+    return try detectWirelessInterface(allocator);
+}
+
 fn detectWirelessInterface(allocator: std.mem.Allocator) !?[]u8 {
     const content = readFileAlloc("/proc/net/wireless", allocator, 8 * 1024) catch |err| {
         return switch (err) {
@@ -103,7 +157,7 @@ fn readCounters(iface: []const u8, allocator: std.mem.Allocator) !?State {
 }
 
 fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
-    const maybe_iface = detectWirelessInterface(allocator) catch |err| {
+    const maybe_iface = detectInterface(allocator) catch |err| {
         std.log.err("net module: {s}", .{@errorName(err)});
         return "n/a";
     };
