@@ -200,68 +200,55 @@ fn fetch(self: module.Module, allocator: std.mem.Allocator) []const u8 {
     if (task_opt == null)
         return std.fmt.allocPrint(allocator, "{s} No tasks", .{self.icons}) catch "n/a"[0..];
 
-    // Truncate output so this module never emits more than 50 bytes.
     const task = task_opt.?;
-    const LIMIT: usize = 100;
 
-    var list = std.ArrayList(u8){ .items = &.{}, .capacity = 0 };
-    defer list.deinit(allocator);
+    // Bound only the visible description so a runaway task can't blow out the
+    // bar; markup (^fg codes) and the due suffix are always emitted in full so
+    // colour codes never get sliced and the due date never drops off.
+    const DESC_MAX = 80;
+    const desc = truncDesc(task.desc, DESC_MAX);
+    const ellipsis: []const u8 = if (task.desc.len > desc.len) "…" else "";
 
-    // Reserve up to LIMIT to reduce reallocs; ignore error, we can still append.
-    _ = list.ensureTotalCapacityPrecise(allocator, LIMIT) catch {};
-
-    const append_limited = struct {
-        fn run(l: *std.ArrayList(u8), alloc: std.mem.Allocator, seg: []const u8, limit: usize) !void {
-            if (l.items.len >= limit) return; // already full
-            const rem = limit - l.items.len;
-            const take = if (seg.len > rem) rem else seg.len;
-            try l.appendSlice(alloc, seg[0..take]);
-        }
-    }.run;
-
-    // icons
-    append_limited(&list, allocator,self.icons, LIMIT) catch return "n/a";
-    // space
-    append_limited(&list, allocator," ", LIMIT) catch return "n/a";
     // muted count of tasks due within the next 7 days, only when non-zero
-    if (task.due_within_week > 0) {
-        append_limited(&list, allocator,"^fg(444444)(", LIMIT) catch return "n/a";
-        var count_buf: [20]u8 = undefined;
-        const count_slice = std.fmt.bufPrint(count_buf[0..], "{d}", .{task.due_within_week}) catch return "n/a";
-        append_limited(&list, allocator,count_slice, LIMIT) catch return "n/a";
-        append_limited(&list, allocator,")^fg() ", LIMIT) catch return "n/a";
-        append_limited(&list, allocator," ", LIMIT) catch return "n/a";
-    }
-    // description (truncated as needed)
-    append_limited(&list, allocator,task.desc, LIMIT) catch return "n/a";
+    var count_buf: [32]u8 = undefined;
+    const count_seg: []const u8 = if (task.due_within_week > 0)
+        std.fmt.bufPrint(&count_buf, "^fg(444444)({d})^fg()  ", .{task.due_within_week}) catch ""
+    else
+        "";
 
-    if (task.due_raw) |d| {
-        // Try to parse relative time; fall back to YYYY-MM-DD if parsing fails
-        const due_accent = "^fg(FFAA88)";
+    // optional due suffix: relative time, else YYYY-MM-DD fallback
+    var due_buf: [64]u8 = undefined;
+    const due_seg: []const u8 = blk: {
+        const d = task.due_raw orelse break :blk "";
         if (parseDueEpoch(d)) |due_epoch| {
-            var buf: [24]u8 = undefined;
-            const rel = formatRelative(buf[0..], now_epoch, due_epoch);
-            append_limited(&list, allocator," ", LIMIT) catch return "n/a";
-            append_limited(&list, allocator,due_accent, LIMIT) catch return "n/a";
-            append_limited(&list, allocator,"due ", LIMIT) catch return "n/a";
-            append_limited(&list, allocator,rel, LIMIT) catch return "n/a";
-            append_limited(&list, allocator,"^fg()", LIMIT) catch return "n/a";
+            var rbuf: [24]u8 = undefined;
+            const rel = formatRelative(&rbuf, now_epoch, due_epoch);
+            break :blk std.fmt.bufPrint(&due_buf, " ^fg(FFAA88)due {s}^fg()", .{rel}) catch "";
         } else if (d.len >= 8) {
-            var tmp: [10]u8 = undefined; // YYYY-MM-DD
-            std.mem.copyForwards(u8, tmp[0..4], d[0..4]);
-            tmp[4] = '-';
-            std.mem.copyForwards(u8, tmp[5..7], d[4..6]);
-            tmp[7] = '-';
-            std.mem.copyForwards(u8, tmp[8..10], d[6..8]);
-            append_limited(&list, allocator," ", LIMIT) catch return "n/a";
-            append_limited(&list, allocator,due_accent, LIMIT) catch return "n/a";
-            append_limited(&list, allocator,"due ", LIMIT) catch return "n/a";
-            append_limited(&list, allocator,tmp[0..], LIMIT) catch return "n/a";
-            append_limited(&list, allocator,"^fg()", LIMIT) catch return "n/a";
+            break :blk std.fmt.bufPrint(&due_buf, " ^fg(FFAA88)due {s}-{s}-{s}^fg()", .{ d[0..4], d[4..6], d[6..8] }) catch "";
         }
-    }
+        break :blk "";
+    };
 
-    return list.toOwnedSlice(allocator) catch "n/a";
+    return std.fmt.allocPrint(allocator, "{s} {s}{s}{s}{s}", .{
+        self.icons, count_seg, desc, ellipsis, due_seg,
+    }) catch "n/a";
+}
+
+/// Truncate to at most `max` bytes without splitting a UTF-8 codepoint.
+fn truncDesc(s: []const u8, max: usize) []const u8 {
+    if (s.len <= max) return s;
+    var end = max;
+    while (end > 0 and (s[end] & 0xC0) == 0x80) end -= 1; // back off continuation bytes
+    return s[0..end];
+}
+
+test truncDesc {
+    try std.testing.expectEqualStrings("abc", truncDesc("abc", 80)); // shorter than max -> untouched
+    try std.testing.expectEqualStrings("ab", truncDesc("abcd", 2)); // plain ascii cut
+    // "é" is 2 bytes (C3 A9): cutting at byte 3 must drop it whole, not split it
+    try std.testing.expectEqualStrings("a", truncDesc("aéb", 2));
+    try std.testing.expectEqualStrings("aé", truncDesc("aéb", 3));
 }
 
 /// Public value the status-bar will import.
