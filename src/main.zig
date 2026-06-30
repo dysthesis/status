@@ -10,10 +10,11 @@ const module = @import("module.zig");
 const net = @import("network.zig");
 const volume = @import("volume.zig");
 const task = @import("task.zig");
+const calendar = @import("calendar.zig");
 
 const tray_size = 0;
 
-const max_modules = 8;
+const max_modules = 10;
 
 pub fn main(init: std.process.Init) !void {
     const alloc = init.arena.allocator();
@@ -24,6 +25,8 @@ pub fn main(init: std.process.Init) !void {
     var module_count: usize = 0;
 
     modules_buf[module_count] = task.Taskwarrior;
+    module_count += 1;
+    modules_buf[module_count] = calendar.Calendar;
     module_count += 1;
     if (brightness.isSupported()) {
         modules_buf[module_count] = brightness.Brightness;
