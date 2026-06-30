@@ -2,8 +2,23 @@ const std = @import("std");
 const module = @import("module.zig");
 const c = @cImport(@cInclude("time.h")); // time, timegm, struct tm
 
+// global_single_threaded uses a .failing allocator, so process.run's internal
+// pipe machinery OOMs; it also defaults to an empty environ, so the spawned
+// `/usr/bin/env task` has no PATH and exits 127 (empty stdout -> "No tasks").
+// Lazily build a real Threaded IO seeded with the process environment and reuse
+// it across fetches (page_allocator is threadsafe; only used for async).
+var threaded_io: ?std.Io.Threaded = null;
+
 fn currentIo() std.Io {
-    return std.Io.Threaded.global_single_threaded.io();
+    if (threaded_io == null) {
+        const c_environ = std.c.environ;
+        var n: usize = 0;
+        while (c_environ[n] != null) : (n += 1) {}
+        threaded_io = std.Io.Threaded.init(std.heap.page_allocator, .{
+            .environ = .{ .block = .{ .slice = c_environ[0..n :null] } },
+        });
+    }
+    return threaded_io.?.io();
 }
 
 /// Helper that runs `task export` (or anything passed in `argv`) and returns its stdout as a fresh
